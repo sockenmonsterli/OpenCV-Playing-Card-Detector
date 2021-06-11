@@ -185,6 +185,7 @@ def preprocess_card(contour, image):
 
     # Find width and height of card's bounding rectangle
     x,y,w,h = cv2.boundingRect(contour)
+    print("x" , x, "y" ,y , "w", w, "h", h)
     qCard.width, qCard.height = w, h
 
     # Find center point of card by taking x and y average of the four corners.
@@ -194,6 +195,7 @@ def preprocess_card(contour, image):
     qCard.center = [cent_x, cent_y]
 
     # Warp card into 200x300 flattened image using perspective transform
+    # Bayerisches Blatt ca: 220 X 400
     qCard.warp = flattener(image, pts, w, h)
 
     # Grab corner of warped card image and do a 4x zoom
@@ -372,8 +374,8 @@ def flattener(image, pts, w, h):
             temp_rect[3] = pts[1][0] # Bottom left
             
         
-    maxWidth = 200
-    maxHeight = 300
+    maxWidth = 225
+    maxHeight = 400
 
     # Create destination array, calculate perspective transform matrix,
     # and warp card image
@@ -382,6 +384,7 @@ def flattener(image, pts, w, h):
     warp = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
     warp = cv2.cvtColor(warp,cv2.COLOR_BGR2GRAY)
 
-        
+    #für Debug zwecke:
+    #cv2.imshow("Warpimg",warp)
 
     return warp

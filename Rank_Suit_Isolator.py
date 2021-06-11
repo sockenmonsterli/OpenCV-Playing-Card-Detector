@@ -14,6 +14,7 @@ img_path = os.path.dirname(os.path.abspath(__file__)) + '/Card_Imgs/'
 IM_WIDTH = 1280
 IM_HEIGHT = 720
 
+#Groesse der Ecken zur Identifikation in Pixeln
 RANK_WIDTH = 70
 RANK_HEIGHT = 125
 
@@ -21,7 +22,7 @@ SUIT_WIDTH = 70
 SUIT_HEIGHT = 100
 
 # If using a USB Camera instead of a PiCamera, change PiOrUSB to 2
-PiOrUSB = 1
+PiOrUSB = 2
 
 if PiOrUSB == 1:
     # Import packages from picamera library
@@ -39,18 +40,15 @@ if PiOrUSB == 2:
     cap = cv2.VideoCapture(0)
 
 # Use counter variable to switch from isolating Rank to isolating Suit
-i = 1
 
-for Name in ['Ace','Two','Three','Four','Five','Six','Seven','Eight',
-             'Nine','Ten','Jack','Queen','King','Spades','Diamonds',
-             'Clubs','Hearts']:
 
-    filename = Name + '.jpg'
-
-    print('Press "p" to take a picture of ' + filename)
+for farbname in ['Eichel','Schellen','Herz','Gras']:
+    for schlagname in ['As','Koenig','Ober','Unter','Zehn','Neun','Acht','Sieben']:
+        filename = farbname + '_' + schlagname + '.jpg'
+    print('Druecke "p" um ein Bild von ' + farbname + ' ' + schlagname + ' aufzunehmen')
     
     
-
+#bei PiKamera muss so das Video eingelesen werden
     if PiOrUSB == 1: # PiCamera
         rawCapture.truncate(0)
         # Press 'p' to take a picture
@@ -63,7 +61,7 @@ for Name in ['Ace','Two','Three','Four','Five','Six','Seven','Eight',
                 break
 
             rawCapture.truncate(0)
-
+#bei USB
     if PiOrUSB == 2: # USB camera
         # Press 'p' to take a picture
         while(True):
@@ -81,7 +79,7 @@ for Name in ['Ace','Two','Three','Four','Five','Six','Seven','Eight',
     retval, thresh = cv2.threshold(blur,100,255,cv2.THRESH_BINARY)
 
     # Find contours and sort them by size
-    dummy,cnts,hier = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    cnts,hier = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     cnts = sorted(cnts, key=cv2.contourArea,reverse=True)
 
     # Assume largest contour is the card. If there are no contours, print an error
@@ -101,44 +99,53 @@ for Name in ['Ace','Two','Three','Four','Five','Six','Seven','Eight',
 
     x,y,w,h = cv2.boundingRect(card)
 
-    # Flatten the card and convert it to 200x300
+    # Flatten the card and convert it to 200x300 (import aus cards.py)
     warp = Cards.flattener(image,pts,w,h)
+    cv2.imshow('ecke',warp)
 
-    # Grab corner of card image, zoom, and threshold
-    corner = warp[0:84, 0:32]
-    #corner_gray = cv2.cvtColor(corner,cv2.COLOR_BGR2GRAY)
-    corner_zoom = cv2.resize(corner, (0,0), fx=4, fy=4)
+    # Grab corners of card image
+    corner_rechts_oben = warp[15:85, 182:225]
+    corner_links_oben = warp[0:75, 0:38]
+    height,width = corner_rechts_oben.shape[:2]
+
+    #Resize faktor 4, sodass eine fixe große Maske machbar
+    corner_zoom = cv2.resize(corner_rechts_oben, (4*width,4*height),cv2.INTER_CUBIC)
     corner_blur = cv2.GaussianBlur(corner_zoom,(5,5),0)
-    retval, corner_thresh = cv2.threshold(corner_blur, 155, 255, cv2. THRESH_BINARY_INV)
+    corner_bilateral = cv2.bilateralFilter(corner_blur,9,75,75)
+    retval, corner_thresh = cv2.threshold(corner_bilateral, 155, 255, cv2. THRESH_BINARY_INV)
 
-    # Isolate suit or rank
-    if i <= 13: # Isolate rank
-        rank = corner_thresh[20:185, 0:128] # Grabs portion of image that shows rank
-        dummy, rank_cnts, hier = cv2.findContours(rank, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        rank_cnts = sorted(rank_cnts, key=cv2.contourArea,reverse=True)
-        x,y,w,h = cv2.boundingRect(rank_cnts[0])
-        rank_roi = rank[y:y+h, x:x+w]
-        rank_sized = cv2.resize(rank_roi, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
-        final_img = rank_sized
+    #retval, corner_thresh = cv2.threshold(corner_blur, 155, 255, cv2. THRESH_BINARY_INV)
+    #zu Debug zwecken : Testecke anzeigen
+    #cv2.imshow('ecke',corner)
 
-    if i > 13: # Isolate suit
-        suit = corner_thresh[186:336, 0:128] # Grabs portion of image that shows suit
-        dummy, suit_cnts, hier = cv2.findContours(suit, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        suit_cnts = sorted(suit_cnts, key=cv2.contourArea,reverse=True)
-        x,y,w,h = cv2.boundingRect(suit_cnts[0])
-        suit_roi = suit[y:y+h, x:x+w]
-        suit_sized = cv2.resize(suit_roi, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
-        final_img = suit_sized
+    # Isolate Schlag oder Farbe
+    rank = corner_thresh
+    cv2.imshow('rank',rank)
+    #bessere Konturenfindung in unzugeschnittener Ecke
+    rank_cnts, hier = cv2.findContours(corner_thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    #falls rank_cnts nicht ausreichen: CHAIN_APPROX_NONE probieren
+    cv2.drawContours(corner_thresh, rank_cnts, -1, (0,255,0), 3)
+
+    # sortieren der Konturen in unserer bisherigen Maske
+    rank_cnts = sorted(rank_cnts, key=cv2.contourArea,reverse=True)
+
+    #richtigen Teil auswählen -- experimentieren!
+    x0,y0,w0,h0 = cv2.boundingRect(rank_cnts[0])
+    rank_roi = rank[y0:y0+h0, x0:x0+w0]
+    # größe fürs resizen festlegen - schlag und farbe sind unterschiedlich groß
+    #rank_sized = cv2.resize(rank_roi, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
+    #suit_sized = cv2.resize(suit_roi, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
+    final_img = rank_roi
 
     cv2.imshow("Image",final_img)
 
     # Save image
-    print('Press "c" to continue.')
+    print('Um zu speichern Taste "c" druecken.')
     key = cv2.waitKey(0) & 0xFF
     if key == ord('c'):
         cv2.imwrite(img_path+filename,final_img)
 
-    i = i + 1
+
 
 cv2.destroyAllWindows()
 camera.close()
